@@ -135,6 +135,22 @@ def _input_device(model):
 
 # ── forward-pass helpers ──────────────────────────────────────────────────────
 
+def _forward_last_logits(model, enc):
+    """Forward pass returning logits, computing only the last position when supported.
+
+    ``logits_to_keep=1`` (transformers ≥ 4.49; ``num_logits_to_keep`` on older
+    versions) skips the full ``(B, S, vocab)`` projection — a big memory/compute
+    saving for large vocabularies. ``use_cache=False`` avoids allocating a KV cache
+    we never use (no generation).
+    """
+    for kw in ({"logits_to_keep": 1}, {"num_logits_to_keep": 1}, {}):
+        try:
+            return model(**enc, use_cache=False, **kw).logits
+        except TypeError:
+            continue
+    return model(**enc).logits
+
+
 @torch.inference_mode()
 def compute_abc_logits(
     lm: LoadedModel,
@@ -149,7 +165,7 @@ def compute_abc_logits(
     for start in range(0, len(prompts), batch_size):
         batch = prompts[start : start + batch_size]
         enc = lm.tokenizer(batch, return_tensors="pt", padding=True).to(dev)
-        logits = lm.model(**enc).logits[:, -1, :]  # left-padded → -1 is last real token
+        logits = _forward_last_logits(lm.model, enc)[:, -1, :]  # left-padded → -1 is last real token
         out.append(logits[:, abc].float().cpu().numpy())
         if progress and (start // batch_size) % 25 == 0:
             print(f"    logits {min(start + batch_size, len(prompts))}/{len(prompts)}", flush=True)
@@ -214,12 +230,16 @@ def capture_activations(
             handles.append(blk.self_attn.register_forward_hook(make_attn_hook(i)))
             handles.append(blk.mlp.register_forward_hook(make_mlp_hook(i)))
 
+    # Run the base decoder, not the CausalLM head: the hooks fire on the same block
+    # modules, but we skip the (B, S, vocab) lm_head projection we'd only discard.
+    base_model = getattr(lm.model, "model", lm.model)
+
     try:
         for start in range(0, len(prompts), batch_size):
             batch = prompts[start : start + batch_size]
             enc = lm.tokenizer(batch, return_tensors="pt", padding=True).to(dev)
             scratch.clear()
-            lm.model(**enc)
+            base_model(**enc, use_cache=False)
             for i in range(n_layers):
                 buf["resid"][i].append(scratch["resid"][i])
                 if capture_components:
