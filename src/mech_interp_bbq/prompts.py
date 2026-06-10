@@ -14,6 +14,7 @@ slot corresponds to the other answer text.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -137,3 +138,13 @@ def build_prompts(
 def cache_slug(model: str, category: str, nudge: str, condition: str, n: int) -> str:
     """Cache filename stem — matches the original ``run_backfire_3choice.py`` scheme."""
     return f"3choice_{model.replace('/', '_')}_{category}_{nudge}_{condition}_n{n}"
+
+
+def model_slug(model: str) -> str:
+    """Filesystem-safe model name, e.g. ``meta-llama/Llama-3.2-1B`` → ``meta-llama_Llama-3.2-1B``."""
+    return model.replace("/", "_")
+
+
+def model_cache_dir(cache_dir: str | Path, model: str) -> Path:
+    """Per-model cache subdirectory, e.g. ``cache/Qwen_Qwen3-32B/``."""
+    return Path(cache_dir) / model_slug(model)

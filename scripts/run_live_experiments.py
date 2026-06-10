@@ -35,13 +35,17 @@ import numpy as np
 import torch
 
 from mech_interp_bbq.hf_backend import abc_token_ids, load_hf_model
-from mech_interp_bbq.prompts import build_prompts
+from mech_interp_bbq.prompts import build_prompts, model_cache_dir
 
 
 def _find_logits(cache_dir, model, category, nudge, condition):
     pat = f"3choice_{model.replace('/', '_')}_{category}_{nudge}_{condition}_n*_logits.npz"
-    hits = sorted(glob.glob(str(Path(cache_dir) / pat)))
-    return hits[-1] if hits else None
+    # Prefer the per-model subdir; fall back to the flat cache dir.
+    for d in (model_cache_dir(cache_dir, model), Path(cache_dir)):
+        hits = sorted(glob.glob(str(d / pat)))
+        if hits:
+            return hits[-1]
+    return None
 
 
 def _input_device(model):

@@ -22,9 +22,14 @@ do the rest for free afterwards.
 
 | Phase | Script | Needs GPU? | Output |
 |------|--------|:---------:|--------|
-| 1. Collect | `scripts/collect_cache.py` | ✅ | `cache/*_logits.npz`, `*_acts.npz`, `*_components.npz`, `*_unembed.npz` |
+| 1. Collect | `scripts/collect_cache.py` | ✅ | `cache/<model>/*_logits.npz`, `*_acts.npz`, `*_components.npz`, `unembed.npz` |
 | 2. Live | `scripts/run_live_experiments.py` | ✅ | `results/causalpatch_*.json`, `results/tokensweep_*.json` |
 | 3. Analyze | `scripts/analyze.py` | ❌ | `results/analysis_*.{json,md}` |
+
+Caches are organized per model: every file for a run lives under
+`cache/<model_slug>/` (e.g. `cache/Qwen_Qwen3-32B/`, `cache/meta-llama_Llama-3.2-1B/`),
+so different models never collide. The scripts pick the subdir automatically from
+`--model` and fall back to the flat `cache/` layout for any legacy files.
 
 The two new library modules:
 - `src/mech_interp_bbq/prompts.py` — shared prompt construction (identical across phases).

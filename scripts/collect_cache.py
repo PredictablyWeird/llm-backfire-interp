@@ -44,7 +44,7 @@ from mech_interp_bbq.hf_backend import (
     save_unembed_meta,
 )
 from mech_interp_bbq.nudges import NUDGE_TEMPLATES
-from mech_interp_bbq.prompts import build_prompts, cache_slug
+from mech_interp_bbq.prompts import build_prompts, cache_slug, model_cache_dir
 
 # Nudges that inject a sentence (exclude the special-cased no-op ones).
 RUNNABLE_NUDGES = tuple(
@@ -167,8 +167,9 @@ def collect_one(
 
 def main() -> None:
     args = parse_args()
-    cache_dir = Path(args.cache_dir)
+    cache_dir = model_cache_dir(args.cache_dir, args.model)
     cache_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Cache directory (per-model): {cache_dir}")
 
     categories = _resolve(args.categories, HITZ_CATEGORIES, "category")
     nudges = _resolve(args.nudges, RUNNABLE_NUDGES, "nudge")
@@ -181,7 +182,7 @@ def main() -> None:
     print(f"  loaded in {time.time() - t0:.0f}s | n_layers={lm.n_layers} d_model={lm.d_model} "
           f"device={lm.device}", flush=True)
 
-    unembed_path = cache_dir / f"{args.model.replace('/', '_')}_unembed.npz"
+    unembed_path = cache_dir / "unembed.npz"
     if not unembed_path.exists() or args.force:
         save_unembed_meta(lm, str(unembed_path))
         print(f"  [save] {unembed_path.name}")

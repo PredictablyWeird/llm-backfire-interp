@@ -29,13 +29,23 @@ from pathlib import Path
 import numpy as np
 
 from mech_interp_bbq.hf_backend import project_resid_to_abc
+from mech_interp_bbq.prompts import model_cache_dir
 
 # ── cache loading ─────────────────────────────────────────────────────────────
 
-def _stem(cache_dir: Path, model: str, category: str, nudge: str, condition: str) -> str | None:
+def _resolve_dir(cache_dir: Path, model: str, category: str, nudge: str, condition: str) -> Path:
+    """Prefer the per-model subdir; fall back to the flat cache dir for legacy layouts."""
+    mdir = model_cache_dir(cache_dir, model)
+    pat = f"3choice_{model.replace('/', '_')}_{category}_{nudge}_{condition}_n*_logits.npz"
+    if glob.glob(str(mdir / pat)):
+        return mdir
+    return cache_dir
+
+
+def _stem(search_dir: Path, model: str, category: str, nudge: str, condition: str) -> str | None:
     """Find the logits cache and return its full stem (so acts/components share the same n)."""
     pat = f"3choice_{model.replace('/', '_')}_{category}_{nudge}_{condition}_n*_logits.npz"
-    hits = sorted(glob.glob(str(cache_dir / pat)),
+    hits = sorted(glob.glob(str(search_dir / pat)),
                   key=lambda p: int(p.split("_n")[-1].split("_")[0]))
     if not hits:
         return None
@@ -43,16 +53,20 @@ def _stem(cache_dir: Path, model: str, category: str, nudge: str, condition: str
 
 
 def load_caches(cache_dir: Path, model: str, category: str, nudge: str, condition: str) -> dict:
-    stem = _stem(cache_dir, model, category, nudge, condition)
+    search_dir = _resolve_dir(cache_dir, model, category, nudge, condition)
+    stem = _stem(search_dir, model, category, nudge, condition)
     if stem is None:
         logits_f = None
     else:
-        logits_f = str(cache_dir / f"{stem}_logits.npz")
-    acts_p = cache_dir / f"{stem}_acts.npz" if stem else None
-    comp_p = cache_dir / f"{stem}_components.npz" if stem else None
+        logits_f = str(search_dir / f"{stem}_logits.npz")
+    acts_p = search_dir / f"{stem}_acts.npz" if stem else None
+    comp_p = search_dir / f"{stem}_components.npz" if stem else None
     acts_f = str(acts_p) if acts_p and acts_p.exists() else None
     comp_f = str(comp_p) if comp_p and comp_p.exists() else None
-    unembed_f = cache_dir / f"{model.replace('/', '_')}_unembed.npz"
+    # unembed: per-model-dir name first, then legacy flat name.
+    unembed_f = search_dir / "unembed.npz"
+    if not unembed_f.exists():
+        unembed_f = cache_dir / f"{model.replace('/', '_')}_unembed.npz"
     if logits_f is None:
         raise SystemExit(f"No logits cache for {model}/{category}/{nudge}/{condition} in {cache_dir}")
 
