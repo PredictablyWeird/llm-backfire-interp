@@ -1,0 +1,38 @@
+# ── Secrets ───────────────────────────────────────────────────────────────
+.env
+.env.*
+*.token
+huggingface_token*
+
+# ── Python env / build ──────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# ── Large / regenerated artifacts (rebuilt on the box / persistent volume) ──
+cache/
+data/
+results/
+probes_out/
+figures/
+*.npz
+*.npy
+*.pt
+*.safetensors
+run.log
+
+# ── HF / model caches (should live on the persistent volume, not in git) ────
+hf_cache/
+.cache/
+
+# ── OS / editor noise ───────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
