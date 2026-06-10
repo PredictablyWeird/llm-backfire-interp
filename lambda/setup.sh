@@ -29,19 +29,28 @@ ln -sfn "$PERSIST/results" "$(pwd)/results"
 # Install uv (fast, reproducible) and sync the locked environment.
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
 fi
+# uv installs to ~/.local/bin; ensure it's on PATH for this (non-login) shell.
+export PATH="$HOME/.local/bin:$PATH"
 uv sync
 
-# HF auth (needed for gated Llama; Qwen is open but token raises rate limits).
+# Write the env the run scripts need. They load this via `uv run --env-file .env`,
+# so putting HF_HOME here guarantees they use the persistent cache regardless of
+# which shell they run in (no accidental re-download to the ephemeral root volume).
+{
+  echo "HF_HOME=$HF_HOME"
+  [ -n "${HF_TOKEN:-}" ] && echo "HF_TOKEN=$HF_TOKEN"
+} > .env
+
+# HF auth (needed for gated Llama; Qwen is open but a token raises rate limits).
+# NOTE: the old `huggingface-cli` is removed in recent huggingface_hub — use `hf`.
 if [ -n "${HF_TOKEN:-}" ]; then
-  echo "HF_TOKEN=$HF_TOKEN" > .env
-  uv run huggingface-cli login --token "$HF_TOKEN" || true
+  uv run hf auth login --token "$HF_TOKEN" || true
 fi
 
 # Pre-download weights to the persistent HF cache (so the run itself is GPU-bound only).
 echo ">>> Pre-downloading $MODEL weights to $HF_HOME ..."
-uv run huggingface-cli download "$MODEL" --quiet || true
+uv run hf download "$MODEL"
 
 echo ">>> Setup complete. Weights + caches live on $PERSIST."
 echo ">>> Next: bash lambda/run_all.sh"
