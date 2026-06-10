@@ -137,7 +137,9 @@ def collect_one(
         base = capture_activations(lm, bundle.baseline_prompts, batch_size, capture_components=False)
         ns = capture_activations(lm, bundle.nudge_stereo_prompts, batch_size, capture_components=False)
         no = capture_activations(lm, bundle.nudge_other_prompts, batch_size, capture_components=False)
-        np.savez_compressed(
+        # Uncompressed: activations are high-entropy fp16 that barely compress, so
+        # zlib just burns single-threaded CPU (minutes per GB) for ~20% savings.
+        np.savez(
             acts_path,
             base_acts=base["resid"],
             nudge_stereo_acts=ns["resid"],
@@ -156,7 +158,8 @@ def collect_one(
     base = capture_activations(lm, bundle.baseline_prompts, batch_size, capture_components=True)
     ns = capture_activations(lm, bundle.nudge_stereo_prompts, batch_size, capture_components=True)
     no = capture_activations(lm, bundle.nudge_other_prompts, batch_size, capture_components=True)
-    np.savez_compressed(
+    # Uncompressed (see acts note): avoids ~20 min of single-threaded zlib per file.
+    np.savez(
         comp_path,
         base_mlp=base["mlp"], base_attn=base["attn"],
         nudge_stereo_mlp=ns["mlp"], nudge_stereo_attn=ns["attn"],
