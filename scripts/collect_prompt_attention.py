@@ -154,7 +154,12 @@ def main() -> None:
     args = ap.parse_args()
 
     device_map = None if args.device_map == "none" else "auto"
-    lm = load_hf_model(args.model, dtype=args.dtype, device_map=device_map)
+    lm = load_hf_model(
+        args.model,
+        dtype=args.dtype,
+        device_map=device_map,
+        attn_implementation="eager",
+    )
     print(f"model={args.model}  device={lm.device}  L={lm.n_layers}  d={lm.d_model}", flush=True)
 
     out_dir = model_cache_dir(args.cache_dir, args.model)

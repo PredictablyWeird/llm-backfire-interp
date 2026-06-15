@@ -80,6 +80,7 @@ def load_hf_model(
     model_name: str,
     dtype: str = "bfloat16",
     device_map: str | None = "auto",
+    attn_implementation: str | None = None,
 ) -> LoadedModel:
     """Load an HF causal LM ready for inference.
 
@@ -88,6 +89,8 @@ def load_hf_model(
         dtype: ``"bfloat16"``, ``"float16"``, or ``"float32"``.
         device_map: ``"auto"`` to shard across visible GPUs; ``None`` to place on a
             single device (CPU if no CUDA).  Use ``None`` + CPU for local smoke tests.
+        attn_implementation: ``"eager"`` required for ``output_attentions=True``
+            (SDPA/flash backends do not return weights).
     """
     torch_dtype = getattr(torch, dtype)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -97,6 +100,8 @@ def load_hf_model(
     tokenizer.padding_side = "left"
 
     kwargs: dict = {"torch_dtype": torch_dtype}
+    if attn_implementation is not None:
+        kwargs["attn_implementation"] = attn_implementation
     if device_map is not None and torch.cuda.is_available():
         kwargs["device_map"] = device_map
     model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
@@ -300,7 +305,12 @@ def capture_prompt_region_attention(
         attn_mask = enc["attention_mask"]  # (B, S)
 
         outputs = lm.model(**enc, output_attentions=True, use_cache=False)
-        attentions = outputs.attentions  # tuple len n_layers of (B, H, S, S)
+        attentions = outputs.attentions
+        if attentions is None or len(attentions) == 0:
+            raise RuntimeError(
+                "Model returned no attention weights. Reload with "
+                "load_hf_model(..., attn_implementation='eager')."
+            )
 
         for b in range(len(batch_prompts)):
             labels = batch_labels[b]
