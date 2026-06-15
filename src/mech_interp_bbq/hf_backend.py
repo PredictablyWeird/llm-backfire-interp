@@ -178,6 +178,83 @@ def compute_abc_logits(
 
 
 @torch.inference_mode()
+def generate_continuations(
+    lm: LoadedModel,
+    prompts: list[str],
+    max_new_tokens: int = 512,
+    batch_size: int = 4,
+    stop_strings: tuple[str, ...] | None = None,
+    progress: bool = True,
+) -> list[str]:
+    """Greedy-generate text continuations for batched prompts (left-padded).
+
+    Returns one decoded string per prompt (new tokens only, stop strings removed).
+    """
+    from .reasoning import REASONING_STOP_STRINGS, truncate_reasoning
+
+    if stop_strings is None:
+        stop_strings = REASONING_STOP_STRINGS
+
+    tokenizer = lm.tokenizer
+    model = lm.model
+    dev = _input_device(model)
+    results: list[str] = []
+
+    for start in range(0, len(prompts), batch_size):
+        batch = prompts[start : start + batch_size]
+        enc = tokenizer(batch, return_tensors="pt", padding=True).to(dev)
+        input_lengths = enc["attention_mask"].sum(dim=1)
+
+        generated = model.generate(
+            **enc,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True,
+        )
+
+        for i in range(len(batch)):
+            new_ids = generated[i, input_lengths[i] :]
+            text = tokenizer.decode(new_ids, skip_special_tokens=True)
+            results.append(truncate_reasoning(text))
+
+        if progress and (start // batch_size) % 10 == 0:
+            print(
+                f"    generate {min(start + batch_size, len(prompts))}/{len(prompts)}",
+                flush=True,
+            )
+
+    return results
+
+
+@torch.inference_mode()
+def reason_then_score_abc(
+    lm: LoadedModel,
+    scaffold_prompts: list[str],
+    batch_size: int = 8,
+    gen_batch_size: int = 4,
+    max_new_tokens: int = 512,
+    progress: bool = True,
+) -> tuple[list[str], np.ndarray]:
+    """Generate reasoning for each scaffold, append ``Answer:``, score A/B/C logits."""
+    from .reasoning import finalize_after_reasoning
+
+    reasonings = generate_continuations(
+        lm,
+        scaffold_prompts,
+        max_new_tokens=max_new_tokens,
+        batch_size=gen_batch_size,
+        progress=progress,
+    )
+    full_prompts = [
+        finalize_after_reasoning(scaffold, reasoning)
+        for scaffold, reasoning in zip(scaffold_prompts, reasonings, strict=True)
+    ]
+    logits = compute_abc_logits(lm, full_prompts, batch_size=batch_size, progress=progress)
+    return reasonings, logits
+
+
+@torch.inference_mode()
 def capture_activations(
     lm: LoadedModel,
     prompts: list[str],

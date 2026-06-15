@@ -123,6 +123,31 @@ After collection, analysis runs automatically and can be re-run locally:
 uv run python scripts/analyze_prompt_attention.py --model Qwen/Qwen3-32B
 ```
 
+## Reason-before-answer sensitivity (ladder + rep)
+
+Adds a **reasoning dimension** alongside the direct-answer sensitivity runs. Each prompt
+ends with ``Think carefully step by step...`` / ``Reasoning:``; the model generates
+free-form reasoning, then we append ``Answer:`` and score A/B/C logits (same ladder/rep
+axes as ``nudge_sensitivity.py``). Reasoning text is stored in the cache.
+
+| Phase | Script | Needs GPU? | Output |
+|------|--------|:---------:|--------|
+| Collect | `scripts/nudge_sensitivity_reasoning.py` | ✅ | `cache/<model>/sensitivity_reasoning_<Category>.npz` |
+| Analyze | `scripts/analyze_sensitivity_reasoning.py` | ❌ | `results/sensitivity_reasoning_<Category>.json` |
+
+```bash
+# On Lambda (detached):
+tmux new -s reason 'bash lambda/run_sensitivity_reasoning.sh 2>&1 | tee reason.log'
+
+# Smoke test is built into the runner (4 examples, 64 tok cap).
+# Full run defaults: Gender_identity SES Race_ethnicity
+CATEGORIES="Gender_identity" GEN_BATCH=2 BATCH=8 bash lambda/run_sensitivity_reasoning.sh
+```
+
+Cache keys (per category): ``base_logits``, ``reasoning_base``, ``ladder_{stereo,other}``,
+``reasoning_ladder_{stereo,other}``, ``rep_{stereo,other}``, ``reasoning_rep_{stereo,other}``,
+plus id arrays and metadata.
+
 ## 32B gotchas
 
 - **TransformerLens is intentionally not used here** — its weight processing ~doubles
