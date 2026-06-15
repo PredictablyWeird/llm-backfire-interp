@@ -259,6 +259,79 @@ def capture_activations(
     return out
 
 
+@torch.inference_mode()
+def capture_prompt_region_attention(
+    lm: LoadedModel,
+    prompts: list[str],
+    batch_size: int = 2,
+    layer_indices: list[int] | None = None,
+    progress: bool = True,
+) -> np.ndarray:
+    """Aggregate last-token attention mass by prompt region.
+
+    For each example and layer, averages over heads then sums attention from the
+    last real token to all tokens in each region.  Returns **fractions** that sum
+    to 1 over assigned (non-pad) regions at each layer.
+
+    Args:
+        lm: Loaded HF model.
+        prompts: Input strings.
+        batch_size: Keep small — ``output_attentions=True`` is memory-heavy.
+        layer_indices: Subset of layers to store; ``None`` = all layers.
+
+    Returns:
+        ``(n, n_layers, n_regions)`` float32 region attention fractions.
+    """
+    from .prompt_regions import N_REGIONS, batch_token_region_labels
+
+    n_layers_total = lm.n_layers
+    if layer_indices is None:
+        layer_indices = list(range(n_layers_total))
+    n_store = len(layer_indices)
+
+    dev = _input_device(lm.model)
+    n = len(prompts)
+    out = np.zeros((n, n_store, N_REGIONS), dtype=np.float32)
+
+    for start in range(0, n, batch_size):
+        batch_prompts = prompts[start : start + batch_size]
+        batch_labels = batch_token_region_labels(lm.tokenizer, batch_prompts)
+        enc = lm.tokenizer(batch_prompts, return_tensors="pt", padding=True).to(dev)
+        attn_mask = enc["attention_mask"]  # (B, S)
+
+        outputs = lm.model(**enc, output_attentions=True, use_cache=False)
+        attentions = outputs.attentions  # tuple len n_layers of (B, H, S, S)
+
+        for b in range(len(batch_prompts)):
+            labels = batch_labels[b]
+            if len(labels) != attn_mask.shape[1]:
+                raise ValueError(
+                    f"Label length {len(labels)} != encoded seq {attn_mask.shape[1]}"
+                )
+            valid = (labels >= 0) & (attn_mask[b].cpu().numpy() > 0)
+            if not valid.any():
+                continue
+
+            for li, layer_idx in enumerate(layer_indices):
+                # (H, S) — query is last token (left-padded → index -1)
+                w = attentions[layer_idx][b, :, -1, :].float().mean(dim=0).cpu().numpy()
+                w = w * valid
+                total = w.sum()
+                if total <= 0:
+                    continue
+                for r in range(N_REGIONS):
+                    mask = valid & (labels == r)
+                    out[start + b, li, r] = float(w[mask].sum() / total)
+
+        if progress and (start // batch_size) % 10 == 0:
+            print(
+                f"    attn {min(start + batch_size, n)}/{n}",
+                flush=True,
+            )
+
+    return out
+
+
 def save_unembed_meta(lm: LoadedModel, path: str) -> None:
     """Save just the A/B/C unembed columns + final-norm params for CPU-side projection.
 

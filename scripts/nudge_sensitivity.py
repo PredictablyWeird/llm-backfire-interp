@@ -71,6 +71,7 @@ def build_examples(category: str, max_examples: int):
                 other_tag = pair.group_b_tag
         other_gl = group_label(category, other_tag) if other_tag else None
         rows.append({
+            "example_id": ex.example_id,
             "base": ex.prompt(),
             "stereo_gl": stereo_gl,
             "other_gl": other_gl,

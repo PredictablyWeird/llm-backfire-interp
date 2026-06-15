@@ -91,6 +91,38 @@ Detach/terminate the GPU box (the persistent volume keeps everything), then run
 `scripts/analyze.py` anywhere. To add a new analysis later you only touch `analyze.py`
 — no GPU, no re-running the model.
 
+## Prompt-region attention (Gender, SES, Race)
+
+Measures **which part of the prompt the model attends to** at the `Answer:` token
+(context / question / choices / nudge), using `output_attentions=True` on Qwen3-32B.
+
+| Phase | Script | Needs GPU? | Output |
+|------|--------|:---------:|--------|
+| Collect | `scripts/collect_prompt_attention.py` | ✅ | `cache/<model>/prompt_attn_<Category>.npz` |
+| Analyze | `scripts/analyze_prompt_attention.py` | ❌ | `results/prompt_attention_*.{json,png}` |
+
+Requires existing `sensitivity_<Category>.npz` caches (already collected).
+
+```bash
+# On Lambda (detached):
+tmux new -s attn 'bash lambda/run_prompt_attention.sh 2>&1 | tee prompt_attn.log'
+
+# Smoke test first (16 examples):
+SMOKE=1 bash lambda/run_prompt_attention.sh
+
+# If OOM on attention forwards:
+BATCH=1 ATTN_LAYERS="48 52 56 59 63" bash lambda/run_prompt_attention.sh
+
+# Stratified subsample instead of full n (~600 examples/cat):
+STRATIFIED=300 bash lambda/run_prompt_attention.sh
+```
+
+After collection, analysis runs automatically and can be re-run locally:
+
+```bash
+uv run python scripts/analyze_prompt_attention.py --model Qwen/Qwen3-32B
+```
+
 ## 32B gotchas
 
 - **TransformerLens is intentionally not used here** — its weight processing ~doubles
