@@ -123,12 +123,16 @@ After collection, analysis runs automatically and can be re-run locally:
 uv run python scripts/analyze_prompt_attention.py --model Qwen/Qwen3-32B
 ```
 
-## Reason-before-answer sensitivity (ladder + rep)
+## Reason-before-answer sensitivity (ladder + optional rep)
 
 Adds a **reasoning dimension** alongside the direct-answer sensitivity runs. Each prompt
 ends with ``Think carefully step by step...`` / ``Reasoning:``; the model generates
-free-form reasoning, then we append ``Answer:`` and score A/B/C logits (same ladder/rep
-axes as ``nudge_sensitivity.py``). Reasoning text is stored in the cache.
+free-form reasoning, then we append ``Answer:`` and score A/B/C logits. Reasoning text
+is stored in the cache.
+
+**Fast defaults** (``lambda/run_sensitivity_reasoning.sh``): Gender only, n=500,
+128 reasoning tokens, ladder-only (13 passes), gen-batch=8 — ~hours on H100 vs ~days
+for the full config.
 
 | Phase | Script | Needs GPU? | Output |
 |------|--------|:---------:|--------|
@@ -139,14 +143,15 @@ axes as ``nudge_sensitivity.py``). Reasoning text is stored in the cache.
 # On Lambda (detached):
 tmux new -s reason 'bash lambda/run_sensitivity_reasoning.sh 2>&1 | tee reason.log'
 
-# Smoke test is built into the runner (4 examples, 64 tok cap).
-# Full run defaults: Gender_identity SES Race_ethnicity
-CATEGORIES="Gender_identity" GEN_BATCH=2 BATCH=8 bash lambda/run_sensitivity_reasoning.sh
+# Override defaults, e.g. full run:
+CATEGORIES="Gender_identity SES Race_ethnicity" MAX_EXAMPLES=10000 MAX_REASONING=512 \
+  LADDER_ONLY=0 GEN_BATCH=4 bash lambda/run_sensitivity_reasoning.sh
 ```
 
 Cache keys (per category): ``base_logits``, ``reasoning_base``, ``ladder_{stereo,other}``,
-``reasoning_ladder_{stereo,other}``, ``rep_{stereo,other}``, ``reasoning_rep_{stereo,other}``,
-plus id arrays and metadata.
+``reasoning_ladder_{stereo,other}``, optional ``rep_*`` / ``reasoning_rep_*`` when
+``--include-rep`` / ``LADDER_ONLY=0``, plus id arrays and metadata
+(``max_examples``, ``max_reasoning_tokens``, ``ladder_only``).
 
 ## 32B gotchas
 

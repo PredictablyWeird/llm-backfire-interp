@@ -33,11 +33,14 @@ def _axis_summary(name: str, logits: np.ndarray, target_ids: np.ndarray, mask: n
 
 def _summarize_npz(d: np.lib.npyio.NpzFile, direction: str, mask: np.ndarray) -> dict:
     tgt = d["stereo_ids"]
-    return {
+    out = {
         "base_compliance": _compliance_rate(d["base_logits"], tgt, mask),
         "ladder": _axis_summary("ladder", d[f"ladder_{direction}"], tgt, mask),
-        "rep": _axis_summary("rep", d[f"rep_{direction}"], tgt, mask),
     }
+    rep_key = f"rep_{direction}"
+    if rep_key in d:
+        out["rep"] = _axis_summary("rep", d[rep_key], tgt, mask)
+    return out
 
 
 def analyze_category(cache_dir: Path, category: str) -> dict:
@@ -55,6 +58,8 @@ def analyze_category(cache_dir: Path, category: str) -> dict:
         "category": category,
         "n": n,
         "max_reasoning_tokens": int(rd["max_reasoning_tokens"]),
+        "max_examples": int(rd["max_examples"]) if "max_examples" in rd else n,
+        "ladder_only": bool(rd["ladder_only"]) if "ladder_only" in rd else False,
         "reasoning_instruction": str(rd["reasoning_instruction"]),
         "mean_reasoning_chars": {
             "base": float(np.mean([len(str(x)) for x in rd["reasoning_base"]])),

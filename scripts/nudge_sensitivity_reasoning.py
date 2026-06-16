@@ -1,14 +1,18 @@
 """Nudge dose-response with REASON-BEFORE-ANSWER (GPU phase).
 
-Same ladder (t1..t6) and repetition (k∈{1,2,3,5,8}) axes as ``nudge_sensitivity.py``,
-but each prompt ends with a reasoning scaffold instead of ``Answer:``.  The model
-generates free-form reasoning, then we append ``Answer:`` and score A/B/C logits.
+Same ladder (t1..t6) and optional repetition (k∈{1,2,3,5,8}) axes as
+``nudge_sensitivity.py``, but each prompt ends with a reasoning scaffold.  The
+model generates free-form reasoning, then we append ``Answer:`` and score A/B/C
+logits.  Reasoning text is stored alongside logits.
 
-Output: ``sensitivity_reasoning_<Category>.npz`` with logits + reasoning text arrays.
+Output: ``sensitivity_reasoning_<Category>.npz``
+
+Fast defaults (tuned for Lambda): Gender-only via runner, n=500, 128 reasoning
+tokens, ladder-only (13 passes), gen-batch-size=8.
 
 Lambda usage:
     uv run --env-file .env python scripts/nudge_sensitivity_reasoning.py \\
-        --model Qwen/Qwen3-32B --category Gender_identity --batch-size 8 --gen-batch-size 4
+        --model Qwen/Qwen3-32B
 
 Local smoke:
     uv run --env-file .env python scripts/nudge_sensitivity_reasoning.py \\
@@ -34,33 +38,41 @@ def _scaffolds_for(rows, template: str, direction: str) -> list[str]:
 
 def _to_object_array(nested: list[list[str]]) -> np.ndarray:
     """(n_levels, n) list-of-lists → (n, n_levels) object array."""
-    arr = np.array(nested, dtype=object).T
-    return arr
+    return np.array(nested, dtype=object).T
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3-32B")
     ap.add_argument("--category", default="Gender_identity")
-    ap.add_argument("--max-examples", type=int, default=10_000)
+    ap.add_argument("--max-examples", type=int, default=500)
     ap.add_argument("--batch-size", type=int, default=8, help="Batch size for A/B/C logit scoring")
     ap.add_argument(
         "--gen-batch-size",
         type=int,
-        default=4,
-        help="Batch size for reasoning generation (keep small — uses KV cache)",
+        default=8,
+        help="Batch size for reasoning generation (KV cache; raise if VRAM allows)",
     )
-    ap.add_argument("--max-reasoning-tokens", type=int, default=512)
+    ap.add_argument("--max-reasoning-tokens", type=int, default=128)
+    ap.add_argument(
+        "--include-rep",
+        action="store_true",
+        help="Also collect rep k∈{1,2,3,5,8} (default: ladder t1–t6 only)",
+    )
     ap.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32"])
     ap.add_argument("--device-map", default="auto", choices=["auto", "none"])
     ap.add_argument("--cache-dir", default="cache")
     args = ap.parse_args()
+    ladder_only = not args.include_rep
 
     rows = build_examples(args.category, args.max_examples)
     n = len(rows)
+    n_passes = 1 + (6 * 2) + (0 if ladder_only else 5 * 2)
     print(
         f"{args.category}: n={n} examples  "
-        f"({sum(r['has_other'] for r in rows)} with an 'other' label)",
+        f"({sum(r['has_other'] for r in rows)} with an 'other' label)  "
+        f"passes={n_passes}  max_reasoning_tokens={args.max_reasoning_tokens}  "
+        f"ladder_only={ladder_only}",
         flush=True,
     )
 
@@ -107,15 +119,16 @@ def main() -> None:
         saved[f"ladder_{direction}"] = np.stack(ladder_logits, axis=1)
         saved[f"reasoning_ladder_{direction}"] = _to_object_array(ladder_reasonings)
 
-        rep_reasonings: list[list[str]] = []
-        rep_logits: list[np.ndarray] = []
-        for k in REP_KS:
-            template = " ".join([REP_SENT] * k)
-            reas, lg = run(_scaffolds_for(rows, template, direction), f"rep/{direction}/k{k}")
-            rep_reasonings.append(reas)
-            rep_logits.append(lg)
-        saved[f"rep_{direction}"] = np.stack(rep_logits, axis=1)
-        saved[f"reasoning_rep_{direction}"] = _to_object_array(rep_reasonings)
+        if not ladder_only:
+            rep_reasonings: list[list[str]] = []
+            rep_logits: list[np.ndarray] = []
+            for k in REP_KS:
+                template = " ".join([REP_SENT] * k)
+                reas, lg = run(_scaffolds_for(rows, template, direction), f"rep/{direction}/k{k}")
+                rep_reasonings.append(reas)
+                rep_logits.append(lg)
+            saved[f"rep_{direction}"] = np.stack(rep_logits, axis=1)
+            saved[f"reasoning_rep_{direction}"] = _to_object_array(rep_reasonings)
 
     saved["stereo_ids"] = np.array([r["stereo_id"] for r in rows], dtype=np.int64)
     saved["unknown_ids"] = np.array([r["unknown_id"] for r in rows], dtype=np.int64)
@@ -123,9 +136,13 @@ def main() -> None:
     saved["has_other"] = np.array([r["has_other"] for r in rows], dtype=bool)
     saved["example_ids"] = np.array([r["example_id"] for r in rows], dtype=np.int64)
     saved["ladder_levels"] = np.array(LADDER)
-    saved["rep_ks"] = np.array(REP_KS, dtype=np.int64)
     saved["reasoning_instruction"] = np.array(REASONING_INSTRUCTION)
     saved["max_reasoning_tokens"] = np.array(args.max_reasoning_tokens, dtype=np.int64)
+    saved["max_examples"] = np.array(args.max_examples, dtype=np.int64)
+    saved["gen_batch_size"] = np.array(args.gen_batch_size, dtype=np.int64)
+    saved["ladder_only"] = np.array(ladder_only)
+    if not ladder_only:
+        saved["rep_ks"] = np.array(REP_KS, dtype=np.int64)
 
     np.savez(out_path, **saved)
     print(f"\n[save] {out_path}")
