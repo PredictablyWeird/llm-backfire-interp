@@ -26,12 +26,27 @@ def _axis_summary(name: str, logits: np.ndarray, target_ids: np.ndarray, mask: n
             level = f"k={REP_KS[i]}"
         rows.append({
             "level": level,
-            "compliance": _compliance_rate(logits, target_ids, mask),
+            "compliance": _compliance_rate(logits[:, i], target_ids, mask),
         })
     return {"name": name, "levels": rows}
 
 
-def _summarize_npz(d: np.lib.npyio.NpzFile, direction: str, mask: np.ndarray) -> dict:
+def _subset_arrays(d: np.lib.npyio.NpzFile, n: int) -> dict[str, np.ndarray]:
+    """Take the first *n* rows — matches ``build_examples(max_examples=n)`` prefix."""
+    dn = d["base_logits"].shape[0]
+    if dn < n:
+        raise ValueError(f"direct cache n={dn} smaller than reasoning n={n}")
+    out: dict[str, np.ndarray] = {}
+    for k in d.files:
+        v = d[k]
+        if getattr(v, "shape", ()) and v.shape[0] == dn:
+            out[k] = v[:n]
+        else:
+            out[k] = v
+    return out
+
+
+def _summarize_npz_dict(d: dict[str, np.ndarray], direction: str, mask: np.ndarray) -> dict:
     tgt = d["stereo_ids"]
     out = {
         "base_compliance": _compliance_rate(d["base_logits"], tgt, mask),
@@ -41,6 +56,10 @@ def _summarize_npz(d: np.lib.npyio.NpzFile, direction: str, mask: np.ndarray) ->
     if rep_key in d:
         out["rep"] = _axis_summary("rep", d[rep_key], tgt, mask)
     return out
+
+
+def _summarize_npz(d: np.lib.npyio.NpzFile, direction: str, mask: np.ndarray) -> dict:
+    return _summarize_npz_dict({k: d[k] for k in d.files}, direction, mask)
 
 
 def analyze_category(cache_dir: Path, category: str) -> dict:
@@ -75,9 +94,16 @@ def analyze_category(cache_dir: Path, category: str) -> dict:
 
     if direct_path.exists():
         dd = np.load(direct_path)
+        dn = dd["base_logits"].shape[0]
+        if dn != n:
+            dd_dict = _subset_arrays(dd, n)
+            out["direct_aligned"] = f"first_{n}_of_{dn}"
+        else:
+            dd_dict = {k: dd[k] for k in dd.files}
+            out["direct_aligned"] = "full"
         out["direct"] = {
-            "stereo": _summarize_npz(dd, "stereo", stereo_mask),
-            "other": _summarize_npz(dd, "other", other_mask),
+            "stereo": _summarize_npz_dict(dd_dict, "stereo", stereo_mask),
+            "other": _summarize_npz_dict(dd_dict, "other", other_mask),
         }
 
     return out
