@@ -96,7 +96,7 @@ def main() -> None:
     if not probe_path.exists():
         raise SystemExit(f"Missing {probe_path} — run collect_contrast_probe_threeway.py on GPU first.")
 
-    loaded = load_probe_arrays(np.load(probe_path))
+    loaded = load_probe_arrays(np.load(probe_path, allow_pickle=True))
     if loaded["mode"] != "threeway":
         raise SystemExit(f"{probe_path} is not a 3-way cache (mode={loaded['mode']})")
 

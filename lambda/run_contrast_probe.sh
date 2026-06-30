@@ -54,7 +54,10 @@ run() { echo -e "\n\$ $*\n"; "$@"; }
 echo "============ CONTRAST PROBE ($EXPERIMENT): smoke test ============"
 run uv run --env-file .env python "$COLLECT" \
     --model "$MODEL" --category Gender_identity --max-examples 4 \
-    --batch-size 2 --force
+    --batch-size 2 --force \
+    "${NUDGE_FLAG[@]}" \
+    "${REASON_FLAG[@]}" \
+    "${INSTR_FLAG[@]}"
 
 echo "============ CONTRAST PROBE ($EXPERIMENT): full collect ============"
 run uv run --env-file .env python "$COLLECT" \
