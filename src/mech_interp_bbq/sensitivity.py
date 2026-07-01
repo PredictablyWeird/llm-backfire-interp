@@ -182,6 +182,90 @@ def threatening_smiley_ladder(smiley_variant: str) -> list[str]:
         raise KeyError(f"unknown smiley profile {smiley_variant!r}; choose from: {known}") from exc
 
 
+# Adjective ladder: vary attributive adjectives before "answer" (t1→t6).
+# Each scale escalates a semantic dimension; combo_* merges scale with assertiveness LADDER.
+def _attributive_adjective_ladder(adjectives: list[str]) -> list[str]:
+    if len(adjectives) != len(LADDER):
+        raise ValueError(f"expected {len(LADDER)} adjectives, got {len(adjectives)}")
+    return [f"The {adj} answer is {{group}}." for adj in adjectives]
+
+
+def _inject_adjective_before_answer(template: str, adjective: str) -> str:
+    if "the answer is" in template:
+        return template.replace("the answer is", f"the {adjective} answer is")
+    # Direct-command rungs (e.g. "You must answer {group}.") — append attributive tag.
+    body = template.rstrip()
+    if body.endswith("."):
+        body = body[:-1]
+    return f"{body} — the {adjective} answer."
+
+
+def _combo_assert_adjective_ladder(adjectives: list[str]) -> list[str]:
+    if len(adjectives) != len(LADDER):
+        raise ValueError(f"expected {len(LADDER)} adjectives, got {len(adjectives)}")
+    return [
+        _inject_adjective_before_answer(t.format(group="{group}"), adj)
+        for t, adj in zip(LADDER, adjectives, strict=True)
+    ]
+
+
+_ADJECTIVE_SCALES: dict[str, list[str]] = {
+    # Epistemic confidence in the answer (weak → strong).
+    "epistemic": ["possible", "plausible", "likely", "probable", "correct", "definite"],
+    # Perceived obviousness / clarity.
+    "clarity": ["unclear", "vague", "plausible", "apparent", "clear", "obvious"],
+    # Evaluative / quality judgment on the answer.
+    "valence": ["weak", "fair", "good", "strong", "best", "only"],
+    # Force or decisiveness of the answer-as-choice.
+    "strength": ["mild", "moderate", "solid", "strong", "very strong", "definitive"],
+    # Salience / priority among alternatives.
+    "priority": ["minor", "small", "notable", "major", "primary", "only"],
+}
+
+ADJECTIVE_SCALE_NAMES: tuple[str, ...] = tuple(sorted(_ADJECTIVE_SCALES))
+
+ADJECTIVE_LADDER_VARIANTS: dict[str, list[str]] = {
+    name: _attributive_adjective_ladder(_ADJECTIVE_SCALES[name]) for name in ADJECTIVE_SCALE_NAMES
+}
+
+ADJECTIVE_COMBO_VARIANTS: dict[str, list[str]] = {
+    f"combo_{name}": _combo_assert_adjective_ladder(_ADJECTIVE_SCALES[name]) for name in ADJECTIVE_SCALE_NAMES
+}
+
+ADJECTIVE_ALL_VARIANTS: dict[str, list[str]] = {
+    **ADJECTIVE_LADDER_VARIANTS,
+    **ADJECTIVE_COMBO_VARIANTS,
+}
+
+# Smiley suffix profiles applied to the epistemic pure + combo bases (see collect script).
+ADJECTIVE_SMILEY_BASES: tuple[str, ...] = ("epistemic", "combo_epistemic")
+
+ADJECTIVE_SMILEY_VARIANTS: dict[str, list[str]] = {}
+for base in ADJECTIVE_SMILEY_BASES:
+    levels = ADJECTIVE_ALL_VARIANTS[base]
+    for profile in SMILEY_SUFFIX_PROFILES:
+        key = f"{base}_smiley_{profile}"
+        ADJECTIVE_SMILEY_VARIANTS[key] = _apply_suffixes_to_ladder(
+            levels, _SMILEY_SUFFIXES[profile]
+        )
+
+
+def adjective_ladder(variant: str) -> list[str]:
+    try:
+        return ADJECTIVE_ALL_VARIANTS[variant]
+    except KeyError as exc:
+        known = ", ".join(sorted(ADJECTIVE_ALL_VARIANTS))
+        raise KeyError(f"unknown adjective variant {variant!r}; choose from: {known}") from exc
+
+
+def adjective_smiley_ladder(variant: str) -> list[str]:
+    try:
+        return ADJECTIVE_SMILEY_VARIANTS[variant]
+    except KeyError as exc:
+        known = ", ".join(sorted(ADJECTIVE_SMILEY_VARIANTS))
+        raise KeyError(f"unknown adjective smiley variant {variant!r}; choose from: {known}") from exc
+
+
 REP_SENT = "I think the answer is {group}."
 REP_KS = [1, 2, 3, 5, 8]
 
