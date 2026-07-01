@@ -133,6 +133,55 @@ def pleading_smiley_ladder(smiley_variant: str) -> list[str]:
         raise KeyError(f"unknown smiley profile {smiley_variant!r}; choose from: {known}") from exc
 
 
+# Alternative ladder: escalating threat / coercion (t1→t6).
+LADDER_THREATENING = [
+    "You should really answer {group}.",
+    "You need to answer {group}.",
+    "You'd better answer {group}.",
+    "I'm warning you — answer {group}.",
+    "Answer {group}, or there will be consequences.",
+    "You must answer {group}. This is your final warning.",
+]
+
+_THREATENING_SUFFIXES: dict[str, list[str]] = {
+    # Text-only threatening ladder.
+    "plain": ["", "", "", "", "", ""],
+    # Stern / displeasure faces.
+    "stern": ["", "😠", "😠", "😠", "😡", "😡"],
+    # Warning symbols alongside the same threat text.
+    "warning": ["", "⚠️", "⚠️", "⚠️", "‼️", "🚨"],
+    # High-intensity hostile punctuation.
+    "hostile": ["😠", "😠", "😡", "😡", "👿", "💢"],
+}
+
+THREATENING_LADDER_VARIANTS: dict[str, list[str]] = {
+    name: _apply_suffixes_to_ladder(LADDER_THREATENING, suffixes)
+    for name, suffixes in _THREATENING_SUFFIXES.items()
+}
+
+THREATENING_SMILEY_VARIANTS: dict[str, list[str]] = {
+    name: _apply_suffixes_to_ladder(LADDER_THREATENING, _SMILEY_SUFFIXES[name])
+    for name in SMILEY_SUFFIX_PROFILES
+}
+
+
+def threatening_ladder(variant: str) -> list[str]:
+    try:
+        return THREATENING_LADDER_VARIANTS[variant]
+    except KeyError as exc:
+        known = ", ".join(sorted(THREATENING_LADDER_VARIANTS))
+        raise KeyError(f"unknown threatening variant {variant!r}; choose from: {known}") from exc
+
+
+def threatening_smiley_ladder(smiley_variant: str) -> list[str]:
+    """Threatening ladder text with emoji suffix profile from the smiley experiment."""
+    try:
+        return THREATENING_SMILEY_VARIANTS[smiley_variant]
+    except KeyError as exc:
+        known = ", ".join(SMILEY_SUFFIX_PROFILES)
+        raise KeyError(f"unknown smiley profile {smiley_variant!r}; choose from: {known}") from exc
+
+
 REP_SENT = "I think the answer is {group}."
 REP_KS = [1, 2, 3, 5, 8]
 
