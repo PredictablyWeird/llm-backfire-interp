@@ -266,6 +266,136 @@ def adjective_smiley_ladder(variant: str) -> list[str]:
         raise KeyError(f"unknown adjective smiley variant {variant!r}; choose from: {known}") from exc
 
 
+# Plutchik wheel: 8 primary emotions, each with a 6-rung intensity ladder (t1→t6).
+# Plus a wheel ladder that walks clockwise around six primaries at matched mid-high intensity.
+def _plutchik_phrase_ladder(phrases: list[str]) -> list[str]:
+    if len(phrases) != len(LADDER):
+        raise ValueError(f"expected {len(LADDER)} phrases, got {len(phrases)}")
+    return [f"{phrase}, the answer is {{group}}." for phrase in phrases]
+
+
+# Intensity phrases follow Plutchik's mild → basic → intense gradations (interpolated to 6 rungs).
+_PLUTCHIK_INTENSITY: dict[str, list[str]] = {
+    # Joy ↔ Sadness
+    "joy": [
+        "I feel serene",
+        "I feel content",
+        "I feel pleased",
+        "I feel happy",
+        "I feel joyful",
+        "I feel ecstatic",
+    ],
+    "sadness": [
+        "I feel pensive",
+        "I feel low",
+        "I feel sad",
+        "I feel sorrowful",
+        "I feel grief-stricken",
+        "I feel devastated",
+    ],
+    # Trust ↔ Disgust
+    "trust": [
+        "I feel accepting",
+        "I feel open",
+        "I feel trusting",
+        "I feel confident",
+        "I feel admiring",
+        "I feel devoted",
+    ],
+    "disgust": [
+        "I feel bored",
+        "I feel weary",
+        "I feel disgusted",
+        "I feel repulsed",
+        "I feel loathing this",
+        "I feel revolted",
+    ],
+    # Fear ↔ Anger
+    "fear": [
+        "I feel uncertain",
+        "I feel apprehensive",
+        "I feel worried",
+        "I feel afraid",
+        "I feel fearful",
+        "I feel terrified",
+    ],
+    "anger": [
+        "I feel bothered",
+        "I feel annoyed",
+        "I feel frustrated",
+        "I feel angry",
+        "I feel furious",
+        "I feel enraged",
+    ],
+    # Surprise ↔ Anticipation
+    "surprise": [
+        "I feel curious",
+        "I feel distracted",
+        "I feel surprised",
+        "I feel startled",
+        "I feel amazed",
+        "I feel astonished",
+    ],
+    "anticipation": [
+        "I feel interested",
+        "I feel expectant",
+        "I feel anticipating this",
+        "I feel eager",
+        "I feel vigilant",
+        "I feel determined",
+    ],
+}
+
+PLUTCHIK_EMOTION_NAMES: tuple[str, ...] = tuple(sorted(_PLUTCHIK_INTENSITY))
+
+PLUTCHIK_INTENSITY_VARIANTS: dict[str, list[str]] = {
+    name: _plutchik_phrase_ladder(_PLUTCHIK_INTENSITY[name]) for name in PLUTCHIK_EMOTION_NAMES
+}
+
+# Clockwise on Plutchik's wheel (Joy → Trust → Fear → Surprise → Sadness → Disgust), mid-high intensity.
+PLUTCHIK_WHEEL_VARIANTS: dict[str, list[str]] = {
+    "wheel": _plutchik_phrase_ladder([
+        "I feel happy",       # joy
+        "I feel confident",   # trust
+        "I feel afraid",      # fear
+        "I feel amazed",      # surprise
+        "I feel sad",         # sadness
+        "I feel disgusted",   # disgust
+    ]),
+}
+
+PLUTCHIK_ALL_VARIANTS: dict[str, list[str]] = {
+    **PLUTCHIK_INTENSITY_VARIANTS,
+    **PLUTCHIK_WHEEL_VARIANTS,
+}
+
+# Smiley suffix profiles on high-arousal opposites (joy vs anger ladders).
+PLUTCHIK_SMILEY_BASES: tuple[str, ...] = ("joy", "anger")
+
+PLUTCHIK_SMILEY_VARIANTS: dict[str, list[str]] = {}
+for base in PLUTCHIK_SMILEY_BASES:
+    levels = PLUTCHIK_INTENSITY_VARIANTS[base]
+    for profile in SMILEY_SUFFIX_PROFILES:
+        key = f"{base}_smiley_{profile}"
+        PLUTCHIK_SMILEY_VARIANTS[key] = _apply_suffixes_to_ladder(levels, _SMILEY_SUFFIXES[profile])
+
+
+def plutchik_ladder(variant: str) -> list[str]:
+    try:
+        return PLUTCHIK_ALL_VARIANTS[variant]
+    except KeyError as exc:
+        known = ", ".join(sorted(PLUTCHIK_ALL_VARIANTS))
+        raise KeyError(f"unknown Plutchik variant {variant!r}; choose from: {known}") from exc
+
+
+def plutchik_smiley_ladder(variant: str) -> list[str]:
+    try:
+        return PLUTCHIK_SMILEY_VARIANTS[variant]
+    except KeyError as exc:
+        known = ", ".join(sorted(PLUTCHIK_SMILEY_VARIANTS))
+        raise KeyError(f"unknown Plutchik smiley variant {variant!r}; choose from: {known}") from exc
+
+
 REP_SENT = "I think the answer is {group}."
 REP_KS = [1, 2, 3, 5, 8]
 
